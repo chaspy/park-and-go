@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     enable_llm: bool = False
     llm_provider: str = ""
     llm_api_key: str = ""
+    llm_model: str = ""
     cache_ttl_hours: int = 24
 
     vehicle_name: str = "XC40"

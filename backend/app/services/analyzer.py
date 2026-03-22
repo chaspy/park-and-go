@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.judge.llm_judge import LLMExtractionRequest, get_llm_extractor
 from app.judge.rule_engine import JudgmentInput, judge
 from app.models.analysis import Analysis
 from app.models.evidence import Evidence as EvidenceModel
@@ -27,7 +28,7 @@ from app.sources.google_places import (
     search_nearby_parking,
     search_place,
 )
-from app.sources.official_site import scrape_site
+from app.sources.official_site import SiteScrapingResult, scrape_site
 from app.utils.geo import haversine_distance, walking_minutes
 from app.utils.place_key import normalize_place_key
 
@@ -158,6 +159,63 @@ def _save_analysis(
     return place, analysis
 
 
+def _has_useful_mentions(site_result: SiteScrapingResult | None) -> bool:
+    """Check if regex extraction found any parking-related mentions."""
+    if not site_result:
+        return False
+    return len(site_result.mentions) > 0
+
+
+async def _run_llm_extraction(
+    place_name: str, site_result: SiteScrapingResult | None
+) -> SiteScrapingResult | None:
+    """Run LLM extraction on site text when regex found nothing."""
+    extractor = get_llm_extractor()
+    if not extractor.is_available():
+        return site_result
+
+    if not site_result or not site_result.url:
+        return site_result
+
+    # Build text from all scraped pages for LLM
+    # We already have the mentions list, but the raw text isn't stored.
+    # Re-fetch the main page text for LLM. This is a trade-off:
+    # we could cache it, but for now we re-extract from the URL.
+    from app.sources.official_site import _extract_text
+
+    import httpx as _httpx
+    try:
+        async with _httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            resp = await client.get(
+                site_result.url,
+                headers={"User-Agent": "parking-judge/0.1 (personal use)"},
+            )
+            if resp.status_code != 200:
+                return site_result
+            site_text = _extract_text(resp.text[:500_000])
+    except Exception as e:
+        logger.warning("Failed to re-fetch site for LLM: %s", e)
+        return site_result
+
+    logger.info("Running LLM extraction for %s (%d chars)", place_name, len(site_text))
+
+    request = LLMExtractionRequest(place_name=place_name, site_text=site_text)
+    result = await extractor.extract(request)
+
+    if result is None:
+        return site_result
+
+    # Convert LLM output to mentions and append to site_result
+    llm_mentions = result.to_mentions()
+    if llm_mentions:
+        logger.info("LLM found %d parking mentions for %s", len(llm_mentions), place_name)
+        if site_result is None:
+            site_result = SiteScrapingResult(url="")
+        site_result.mentions.extend(llm_mentions)
+
+    return site_result
+
+
 async def analyze_place(request: AnalyzeRequest, db: Session) -> AnalyzeResponse:
     """Main analysis pipeline."""
     place_key = normalize_place_key(
@@ -195,6 +253,16 @@ async def analyze_place(request: AnalyzeRequest, db: Session) -> AnalyzeResponse
             site_result = await scrape_site(website_url)
         except Exception as e:
             logger.warning("Site scraping failed for %s: %s", website_url, e)
+
+    # Step 2.5: If regex found nothing useful, try LLM extraction
+    if not _has_useful_mentions(site_result) and website_url:
+        try:
+            site_result = await _run_llm_extraction(
+                place_name=(place_info.name if place_info else request.name) or "Unknown",
+                site_result=site_result,
+            )
+        except Exception as e:
+            logger.warning("LLM extraction failed: %s", e)
 
     # Step 3: Search nearby parking
     lat = (place_info.lat if place_info else request.lat) or None
@@ -239,7 +307,6 @@ async def analyze_place(request: AnalyzeRequest, db: Session) -> AnalyzeResponse
     except Exception as e:
         logger.error("Failed to save analysis: %s", e)
         db.rollback()
-        # Return result without caching
         return AnalyzeResponse(
             place_key=place_key,
             place_name=(place_info.name if place_info else request.name) or "Unknown",
