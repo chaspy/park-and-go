@@ -178,13 +178,46 @@ def judge(input_data: JudgmentInput) -> JudgmentResult:
             weight=0.3,
         ))
 
+    # --- Derived flags ---
+    site_says_nothing = not has_positive and not has_negative and not has_partner
+
     # --- Rule-based decision ---
 
-    # Rule 1: Places parking + no site denial → onsite
-    if places_parking is True and not has_negative:
+    # Rule 1a: Places parking + site confirms → onsite, high confidence
+    if places_parking is True and has_positive:
         result.verdict = Verdict.ONSITE
-        result.confidence = 0.8 if has_positive else 0.65
-        result.summary = "Google Placesおよび公式情報から、店舗に駐車場があると判断しました。"
+        result.confidence = 0.8 if has_capacity else 0.75
+        result.summary = "Google Placesおよび公式サイトの両方で駐車場ありの情報が確認できました。"
+
+    # Rule 1b: Places parking + site says nothing → weak signal, not enough to confirm
+    elif places_parking is True and site_says_nothing:
+        if nearby_150 >= 2:
+            result.verdict = Verdict.NEARBY_ONLY
+            result.confidence = 0.4
+            result.summary = (
+                f"Google Placesに駐車場情報がありますが、公式サイトでは確認できませんでした。"
+                f"150m以内に{nearby_150}件の近隣駐車場があります。"
+            )
+        else:
+            result.verdict = Verdict.UNKNOWN
+            result.confidence = 0.35
+            result.summary = (
+                "Google Placesに駐車場ありの情報がありますが、公式サイトでは確認できませんでした。"
+                "実際に駐車場があるかは不明です。"
+            )
+
+    # Rule 1c: Places parking + site denies → site denial wins
+    elif places_parking is True and has_negative:
+        if nearby_300 > 0:
+            result.verdict = Verdict.NEARBY_ONLY
+            result.confidence = 0.6
+            result.summary = (
+                f"公式サイトでは駐車場なしの記載があります。300m以内に{nearby_300}件の駐車場候補があります。"
+            )
+        else:
+            result.verdict = Verdict.AVOID
+            result.confidence = 0.55
+            result.summary = "公式サイトに駐車場なしの記載があります。"
 
     # Rule 2: Site says partner
     elif has_partner:

@@ -30,11 +30,19 @@ class TestVerdict:
         "description, input_data, expected_verdict",
         [
             (
-                "Places parking + no site denial → onsite",
+                "Places parking + site says nothing → unknown (Google alone is weak)",
                 JudgmentInput(
                     place_info=PlaceInfo(parking_options={"freeParkingLot": True}),
                 ),
-                Verdict.ONSITE,
+                Verdict.UNKNOWN,
+            ),
+            (
+                "Places parking + site says nothing + nearby → nearby_only",
+                JudgmentInput(
+                    place_info=PlaceInfo(parking_options={"freeParkingLot": True}),
+                    nearby_parking=_nearby(3, distance_m=100),
+                ),
+                Verdict.NEARBY_ONLY,
             ),
             (
                 "Places parking + site positive → onsite high confidence",
@@ -43,6 +51,15 @@ class TestVerdict:
                     site_result=_site_with_mentions(_mention("positive", "駐車場あり")),
                 ),
                 Verdict.ONSITE,
+            ),
+            (
+                "Places parking + site negative → site denial wins",
+                JudgmentInput(
+                    place_info=PlaceInfo(parking_options={"freeParkingLot": True}),
+                    site_result=_site_with_mentions(_mention("negative", "駐車場なし")),
+                    nearby_parking=_nearby(2, distance_m=200),
+                ),
+                Verdict.NEARBY_ONLY,
             ),
             (
                 "Site says 提携駐車場 → partner",
