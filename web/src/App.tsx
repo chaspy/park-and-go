@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { search, analyze, geocode } from "./api";
+import { search, analyze, geocode, reverseGeocode } from "./api";
 import type { SearchResultItem, AnalyzeResponse, Location } from "./types";
 import { SearchBar } from "./components/SearchBar";
 import { PlaceList } from "./components/PlaceList";
@@ -30,10 +30,17 @@ function App() {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setLocationName("現在地");
+      async (pos) => {
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setLocation(loc);
         setLocationLoading(false);
+        // Resolve to place name in background
+        try {
+          const name = await reverseGeocode(loc.lat, loc.lng);
+          setLocationName(name);
+        } catch {
+          setLocationName(`${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`);
+        }
       },
       () => {
         setGeoFailed(true);
@@ -138,7 +145,7 @@ function App() {
       {location && !locationLoading && (
         <>
           <div className="location-status">
-            <span>📍 {locationName}</span>
+            <span>📍 {locationName || "現在地を特定中..."}</span>
             <button className="change-location-btn" onClick={handleChangeLocation}>
               変更
             </button>

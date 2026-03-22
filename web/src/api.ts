@@ -41,6 +41,13 @@ export async function geocode(query: string): Promise<{ lat: number; lng: number
   return res.json();
 }
 
+export async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/reverse-geocode?lat=${lat}&lng=${lng}`);
+  if (!res.ok) return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  const data = await res.json();
+  return data.name;
+}
+
 export async function getRecent(): Promise<AnalyzeResponse[]> {
   const res = await fetch(`${API_BASE}/api/recent`);
   if (!res.ok) return [];
