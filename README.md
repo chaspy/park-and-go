@@ -54,8 +54,8 @@ Chrome拡張 / Web UI
 ### 2. 環境変数
 
 ```bash
-cp .env.example backend/.env
-# backend/.env を編集して GOOGLE_MAPS_API_KEY を設定
+cp .env.example .env
+# .env を編集して GOOGLE_MAPS_API_KEY を設定
 ```
 
 ### 3. バックエンド起動

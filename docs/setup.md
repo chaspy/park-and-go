@@ -18,8 +18,10 @@ pip install -e ".[dev]"
 
 ### Environment
 
+プロジェクトルートに `.env` を置きます:
+
 ```bash
-cp ../.env.example .env
+cp .env.example .env
 ```
 
 `.env` を編集:
