@@ -33,8 +33,16 @@ class SearchResultItem(BaseModel):
     parking: ParkingSummary
 
 
+class NearbyParkingPin(BaseModel):
+    name: str
+    lat: float
+    lng: float
+    distance_m: int
+
+
 class SearchResponse(BaseModel):
     keyword: str
     location: dict
     results: list[SearchResultItem]
+    nearby_parking_pins: list[NearbyParkingPin] = []
     total: int

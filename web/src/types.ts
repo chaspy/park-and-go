@@ -35,10 +35,18 @@ export interface SearchResultItem {
   parking: ParkingSummary;
 }
 
+export interface NearbyParkingPin {
+  name: string;
+  lat: number;
+  lng: number;
+  distance_m: number;
+}
+
 export interface SearchResponse {
   keyword: string;
   location: Location;
   results: SearchResultItem[];
+  nearby_parking_pins: NearbyParkingPin[];
   total: number;
 }
 

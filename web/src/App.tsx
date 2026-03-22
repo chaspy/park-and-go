@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { search, analyze, geocode, reverseGeocode } from "./api";
-import type { SearchResultItem, AnalyzeResponse, Location } from "./types";
+import type { SearchResultItem, NearbyParkingPin, AnalyzeResponse, Location } from "./types";
 import { SearchBar } from "./components/SearchBar";
 import { PlaceList } from "./components/PlaceList";
 import { MapView } from "./components/MapView";
@@ -19,6 +19,7 @@ function App() {
   const [locationLoading, setLocationLoading] = useState(true);
   const [geoFailed, setGeoFailed] = useState(false);
   const [results, setResults] = useState<SearchResultItem[]>([]);
+  const [parkingPins, setParkingPins] = useState<NearbyParkingPin[]>([]);
   const [detail, setDetail] = useState<AnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -88,6 +89,7 @@ function App() {
           radius_m: 2000,
         });
         setResults(res.results);
+        setParkingPins(res.nearby_parking_pins || []);
       } catch (e) {
         setError(e instanceof Error ? e.message : "検索に失敗しました");
       } finally {
@@ -177,7 +179,7 @@ function App() {
           </div>
 
           {resultMode === "map" && (
-            <MapView center={location} items={results} onSelect={handleSelectPlace} />
+            <MapView center={location} items={results} parkingPins={parkingPins} onSelect={handleSelectPlace} />
           )}
 
           {resultMode === "list" && (

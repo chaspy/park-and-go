@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { SearchResultItem, Location } from "../types";
+import type { SearchResultItem, NearbyParkingPin, Location } from "../types";
 
 interface Props {
   center: Location;
   items: SearchResultItem[];
+  parkingPins: NearbyParkingPin[];
   onSelect: (item: SearchResultItem) => void;
 }
 
@@ -17,7 +18,7 @@ const VERDICT_COLORS: Record<string, string> = {
   avoid: "#dc2626",
 };
 
-function createIcon(color: string) {
+function createStoreIcon(color: string) {
   return L.divIcon({
     className: "map-pin",
     html: `<div style="
@@ -33,6 +34,27 @@ function createIcon(color: string) {
   });
 }
 
+const parkingIcon = L.divIcon({
+  className: "map-pin-parking",
+  html: `<div style="
+    width: 22px; height: 22px;
+    background: #7c3aed;
+    border: 2px solid white;
+    border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+  ">P</div>`,
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+  popupAnchor: [0, -13],
+});
+
 const currentLocationIcon = L.divIcon({
   className: "map-pin-current",
   html: `<div style="
@@ -46,7 +68,7 @@ const currentLocationIcon = L.divIcon({
   iconAnchor: [8, 8],
 });
 
-export function MapView({ center, items, onSelect }: Props) {
+export function MapView({ center, items, parkingPins, onSelect }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<L.Map | null>(null);
 
@@ -68,19 +90,32 @@ export function MapView({ center, items, onSelect }: Props) {
       maxZoom: 19,
     }).addTo(map);
 
-    // Current location marker
+    // Current location
     L.marker([center.lat, center.lng], { icon: currentLocationIcon })
       .addTo(map)
       .bindPopup("現在地");
 
-    // Result markers
     const bounds = L.latLngBounds([[center.lat, center.lng]]);
 
+    // Nearby parking pins (P markers)
+    parkingPins.forEach((p) => {
+      L.marker([p.lat, p.lng], { icon: parkingIcon })
+        .addTo(map)
+        .bindPopup(`
+          <div style="font-size:12px">
+            <strong>${p.name}</strong><br>
+            ${p.distance_m}m
+          </div>
+        `);
+      bounds.extend([p.lat, p.lng]);
+    });
+
+    // Store result markers
     items.forEach((item) => {
       if (!item.lat || !item.lng) return;
 
       const color = VERDICT_COLORS[item.parking.verdict] || "#6b7280";
-      const icon = createIcon(color);
+      const icon = createStoreIcon(color);
 
       const marker = L.marker([item.lat, item.lng], { icon })
         .addTo(map)
@@ -93,10 +128,7 @@ export function MapView({ center, items, onSelect }: Props) {
           </div>
         `);
 
-      marker.on("click", () => {
-        marker.openPopup();
-      });
-
+      marker.on("click", () => marker.openPopup());
       marker.on("popupopen", () => {
         const popupEl = marker.getPopup()?.getElement();
         if (popupEl) {
@@ -118,7 +150,7 @@ export function MapView({ center, items, onSelect }: Props) {
       map.remove();
       leafletMap.current = null;
     };
-  }, [center, items, onSelect]);
+  }, [center, items, parkingPins, onSelect]);
 
   return <div ref={mapRef} className="map-container" />;
 }

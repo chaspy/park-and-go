@@ -162,14 +162,38 @@ async def search_with_parking(request: SearchRequest) -> SearchResponse:
             parking=parking,
         )
 
-    results = await asyncio.gather(*[enrich(p) for p in places])
+    # Step 2 + Step 3: enrich places and fetch area parking in parallel
+    from app.schemas.search import NearbyParkingPin
 
-    # Sort by distance
-    results_list = sorted(results, key=lambda r: r.distance_m or 999999)
+    async def fetch_area_parking() -> list[NearbyParkingPin]:
+        """Fetch parking lots around user's location for map pins."""
+        try:
+            raw = await search_nearby_parking(request.lat, request.lng, radius_m=request.radius_m)
+            pins: list[NearbyParkingPin] = []
+            seen: set[str] = set()
+            for p in raw:
+                if p.lat and p.lng and p.place_id not in seen:
+                    seen.add(p.place_id)
+                    dist = int(haversine_distance(request.lat, request.lng, p.lat, p.lng))
+                    pins.append(NearbyParkingPin(
+                        name=p.name, lat=p.lat, lng=p.lng, distance_m=dist,
+                    ))
+            return sorted(pins, key=lambda x: x.distance_m)
+        except Exception as e:
+            logger.warning("Area parking fetch failed: %s", e)
+            return []
+
+    enriched, parking_pins = await asyncio.gather(
+        asyncio.gather(*[enrich(p) for p in places]),
+        fetch_area_parking(),
+    )
+
+    results_list = sorted(enriched, key=lambda r: r.distance_m or 999999)
 
     return SearchResponse(
         keyword=request.keyword,
         location={"lat": request.lat, "lng": request.lng},
         results=results_list,
+        nearby_parking_pins=parking_pins,
         total=len(results_list),
     )
