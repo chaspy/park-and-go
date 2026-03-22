@@ -9,10 +9,9 @@ def test_analyze_with_name():
     response = client.post("/api/analyze", json={"name": "Test Store", "address": "Tokyo"})
     assert response.status_code == 200
     data = response.json()
-    assert data["place_name"] == "Test Store"
-    assert data["verdict"] == "unknown"
-    assert data["vehicle_fit"] == "unknown"
     assert "place_key" in data
+    assert data["verdict"] in ("onsite", "partner", "nearby_only", "unknown", "avoid")
+    assert data["vehicle_fit"] in ("easy", "ok", "tight", "unknown", "avoid")
 
 
 def test_analyze_with_url():

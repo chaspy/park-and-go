@@ -27,6 +27,7 @@ PLACE_FIELDS = [
     "places.types",
     "places.parkingOptions",
     "places.googleMapsUri",
+    "places.rating",
 ]
 
 PLACE_DETAIL_FIELDS = [
@@ -56,6 +57,7 @@ class PlaceInfo:
     types: list[str] = field(default_factory=list)
     parking_options: dict | None = None
     google_maps_uri: str | None = None
+    rating: float | None = None
     raw: dict = field(default_factory=dict)
 
 
@@ -91,6 +93,7 @@ def _parse_place(data: dict) -> PlaceInfo:
         types=data.get("types", []),
         parking_options=data.get("parkingOptions"),
         google_maps_uri=data.get("googleMapsUri"),
+        rating=data.get("rating"),
         raw=data,
     )
 
@@ -124,6 +127,41 @@ async def search_place(name: str, address: str | None = None) -> PlaceInfo | Non
         return None
 
     return _parse_place(places[0])
+
+
+async def search_places_nearby(
+    keyword: str, lat: float, lng: float, radius_m: int = 1000, max_results: int = 10
+) -> list[PlaceInfo]:
+    """Search for places by keyword with location bias. Returns multiple results."""
+    api_key = _get_api_key()
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": api_key,
+        "X-Goog-FieldMask": ",".join(PLACE_FIELDS),
+    }
+    body = {
+        "textQuery": keyword,
+        "locationBias": {
+            "circle": {
+                "center": {"latitude": lat, "longitude": lng},
+                "radius": float(radius_m),
+            }
+        },
+        "maxResultCount": max_results,
+        "languageCode": "ja",
+    }
+
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        try:
+            resp = await client.post(TEXT_SEARCH_URL, headers=headers, json=body)
+            resp.raise_for_status()
+        except httpx.HTTPError as e:
+            logger.error("Places nearby text search failed: %s", e)
+            return []
+
+    data = resp.json()
+    return [_parse_place(p) for p in data.get("places", [])]
 
 
 async def get_place_details(place_id: str) -> PlaceInfo | None:

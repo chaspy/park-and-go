@@ -9,6 +9,7 @@ from app.api.analyze import router as analyze_router
 from app.api.config import router as config_router
 from app.api.health import router as health_router
 from app.api.places import router as places_router
+from app.api.search import router as search_router
 from app.db.database import init_db
 
 logging.basicConfig(
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(analyze_router)
     app.include_router(config_router)
     app.include_router(places_router)
+    app.include_router(search_router)
 
     return app
 
