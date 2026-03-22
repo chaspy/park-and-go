@@ -19,22 +19,39 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [lastKeyword, setLastKeyword] = useState("");
 
-  // Get current location on mount
-  useEffect(() => {
+  const [locationLoading, setLocationLoading] = useState(true);
+
+  const requestLocation = useCallback(() => {
     if (!navigator.geolocation) {
       setLocationError("位置情報がサポートされていません");
+      setLocationLoading(false);
       return;
     }
+    setLocationLoading(true);
+    setLocationError(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocationLoading(false);
       },
-      () => {
-        setLocationError("位置情報を許可してください");
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocationError("位置情報が拒否されました。ブラウザの設定から許可してください。");
+        } else if (err.code === err.TIMEOUT) {
+          setLocationError("位置情報の取得がタイムアウトしました。");
+        } else {
+          setLocationError("位置情報を取得できませんでした。");
+        }
+        setLocationLoading(false);
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 15000 }
     );
   }, []);
+
+  // Get current location on mount
+  useEffect(() => {
+    requestLocation();
+  }, [requestLocation]);
 
   const handleSearch = useCallback(
     async (keyword: string) => {
@@ -102,8 +119,16 @@ function App() {
         <h1>Parking Judge</h1>
       </header>
 
-      {locationError && <div className="location-banner">{locationError}</div>}
-      {location && !locationError && (
+      {locationLoading && (
+        <div className="location-banner">位置情報を取得中...</div>
+      )}
+      {locationError && (
+        <div className="location-banner">
+          <p>{locationError}</p>
+          <button className="retry-btn" onClick={requestLocation}>再取得</button>
+        </div>
+      )}
+      {location && !locationLoading && (
         <SearchBar onSearch={handleSearch} loading={loading} />
       )}
 
