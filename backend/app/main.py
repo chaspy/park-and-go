@@ -11,6 +11,7 @@ from app.api.analyze import router as analyze_router
 from app.api.config import router as config_router
 from app.api.health import router as health_router
 from app.api.places import router as places_router
+from app.api.geocode import router as geocode_router
 from app.api.search import router as search_router
 from app.db.database import init_db
 
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(config_router)
     app.include_router(places_router)
     app.include_router(search_router)
+    app.include_router(geocode_router)
 
     # Serve built Web UI as static files (must be after API routes)
     if WEB_DIST.exists():

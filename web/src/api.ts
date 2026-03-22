@@ -28,6 +28,19 @@ export async function analyze(request: AnalyzeRequest): Promise<AnalyzeResponse>
   return res.json();
 }
 
+export async function geocode(query: string): Promise<{ lat: number; lng: number; name: string }> {
+  const res = await fetch(`${API_BASE}/api/geocode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "場所が見つかりませんでした");
+  }
+  return res.json();
+}
+
 export async function getRecent(): Promise<AnalyzeResponse[]> {
   const res = await fetch(`${API_BASE}/api/recent`);
   if (!res.ok) return [];

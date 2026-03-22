@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { search, analyze } from "./api";
+import { search, analyze, geocode } from "./api";
 import type { SearchResultItem, AnalyzeResponse, Location } from "./types";
 import { SearchBar } from "./components/SearchBar";
 import { PlaceList } from "./components/PlaceList";
 import { DetailView } from "./components/DetailView";
+import { LocationInput } from "./components/LocationInput";
 import "./App.css";
 
 type View = "search" | "detail";
@@ -11,7 +12,9 @@ type View = "search" | "detail";
 function App() {
   const [view, setView] = useState<View>("search");
   const [location, setLocation] = useState<Location | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationName, setLocationName] = useState<string | null>(null);
+  const [locationLoading, setLocationLoading] = useState(true);
+  const [geoFailed, setGeoFailed] = useState(false);
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [detail, setDetail] = useState<AnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -19,39 +22,49 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [lastKeyword, setLastKeyword] = useState("");
 
-  const [locationLoading, setLocationLoading] = useState(true);
-
-  const requestLocation = useCallback(() => {
+  // Try GPS on mount
+  useEffect(() => {
     if (!navigator.geolocation) {
-      setLocationError("位置情報がサポートされていません");
+      setGeoFailed(true);
       setLocationLoading(false);
       return;
     }
-    setLocationLoading(true);
-    setLocationError(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocationName("現在地");
         setLocationLoading(false);
       },
-      (err) => {
-        if (err.code === err.PERMISSION_DENIED) {
-          setLocationError("位置情報が拒否されました。ブラウザの設定から許可してください。");
-        } else if (err.code === err.TIMEOUT) {
-          setLocationError("位置情報の取得がタイムアウトしました。");
-        } else {
-          setLocationError("位置情報を取得できませんでした。");
-        }
+      () => {
+        setGeoFailed(true);
         setLocationLoading(false);
       },
-      { enableHighAccuracy: true, timeout: 15000 }
+      { enableHighAccuracy: true, timeout: 10000 }
     );
   }, []);
 
-  // Get current location on mount
-  useEffect(() => {
-    requestLocation();
-  }, [requestLocation]);
+  // Manual location by place name
+  const handleSetLocation = useCallback(async (query: string) => {
+    setLocationLoading(true);
+    try {
+      const result = await geocode(query);
+      setLocation({ lat: result.lat, lng: result.lng });
+      setLocationName(result.name);
+      setGeoFailed(false);
+    } catch {
+      setError("場所が見つかりませんでした");
+    } finally {
+      setLocationLoading(false);
+    }
+  }, []);
+
+  const handleChangeLocation = useCallback(() => {
+    setLocation(null);
+    setLocationName(null);
+    setGeoFailed(true);
+    setResults([]);
+    setLastKeyword("");
+  }, []);
 
   const handleSearch = useCallback(
     async (keyword: string) => {
@@ -89,7 +102,6 @@ function App() {
       });
       setDetail(res);
     } catch {
-      // If detailed analysis fails, build a minimal result from search data
       setDetail(null);
     } finally {
       setDetailLoading(false);
@@ -104,11 +116,7 @@ function App() {
   if (view === "detail") {
     return (
       <div className="app">
-        <DetailView
-          detail={detail}
-          loading={detailLoading}
-          onBack={handleBack}
-        />
+        <DetailView detail={detail} loading={detailLoading} onBack={handleBack} />
       </div>
     );
   }
@@ -122,14 +130,21 @@ function App() {
       {locationLoading && (
         <div className="location-banner">位置情報を取得中...</div>
       )}
-      {locationError && (
-        <div className="location-banner">
-          <p>{locationError}</p>
-          <button className="retry-btn" onClick={requestLocation}>再取得</button>
-        </div>
+
+      {!locationLoading && geoFailed && !location && (
+        <LocationInput onSubmit={handleSetLocation} />
       )}
+
       {location && !locationLoading && (
-        <SearchBar onSearch={handleSearch} loading={loading} />
+        <>
+          <div className="location-status">
+            <span>📍 {locationName}</span>
+            <button className="change-location-btn" onClick={handleChangeLocation}>
+              変更
+            </button>
+          </div>
+          <SearchBar onSearch={handleSearch} loading={loading} />
+        </>
       )}
 
       {error && <div className="error-banner">{error}</div>}
@@ -137,11 +152,7 @@ function App() {
       {loading && <div className="loading">検索中...</div>}
 
       {!loading && results.length > 0 && (
-        <PlaceList
-          items={results}
-          keyword={lastKeyword}
-          onSelect={handleSelectPlace}
-        />
+        <PlaceList items={results} keyword={lastKeyword} onSelect={handleSelectPlace} />
       )}
 
       {!loading && lastKeyword && results.length === 0 && !error && (
