@@ -13,6 +13,8 @@ node_modules/
 .DS_Store
 *.swp
 *.swo
+.parking-judge.pid
+.parking-judge.log
 .pytest_cache/
 .ruff_cache/
 htmlcov/
