@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     vehicle_width_mm: int = 1875
     vehicle_height_mm: int = 1655
 
-    model_config = {"env_file": "../.env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": "../.env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()
