@@ -1,16 +1,16 @@
-.PHONY: dev dev-backend dev-web setup setup-backend setup-web test lint
+.PHONY: dev dev-local build-web setup setup-backend setup-web test lint
 
-dev: ## Start backend and web UI
+dev: build-web ## Build web UI and start backend (single port, Tailscale ready)
+	cd backend && source .venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8787 --reload
+
+dev-local: ## Start backend + Vite dev server separately (for frontend dev)
 	@trap 'kill 0' EXIT; \
-	$(MAKE) dev-backend & \
-	$(MAKE) dev-web & \
+	cd backend && source .venv/bin/activate && uvicorn app.main:app --host 127.0.0.1 --port 8787 --reload & \
+	cd web && npm run dev & \
 	wait
 
-dev-backend: ## Start backend only
-	cd backend && source .venv/bin/activate && uvicorn app.main:app --host 127.0.0.1 --port 8787 --reload
-
-dev-web: ## Start web UI only
-	cd web && npm run dev
+build-web: ## Build web UI static files
+	cd web && npm run build
 
 setup: setup-backend setup-web ## Setup all dependencies
 

@@ -1,6 +1,6 @@
 import type { AnalyzeRequest, AnalyzeResponse, SearchRequest, SearchResponse } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8787";
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export async function search(request: SearchRequest): Promise<SearchResponse> {
   const res = await fetch(`${API_BASE}/api/search`, {

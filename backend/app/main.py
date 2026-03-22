@@ -1,9 +1,11 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.analyze import router as analyze_router
 from app.api.config import router as config_router
@@ -18,12 +20,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+WEB_DIST = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Initializing database...")
     init_db()
     logger.info("parking-judge started")
+    if WEB_DIST.exists():
+        logger.info("Serving Web UI from %s", WEB_DIST)
+    else:
+        logger.warning("Web UI not found at %s — run 'cd web && npm run build'", WEB_DIST)
     yield
 
 
@@ -43,6 +51,10 @@ def create_app() -> FastAPI:
     app.include_router(config_router)
     app.include_router(places_router)
     app.include_router(search_router)
+
+    # Serve built Web UI as static files (must be after API routes)
+    if WEB_DIST.exists():
+        app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="web")
 
     return app
 
