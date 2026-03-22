@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Parking Judge",
+  "version": "0.1.0",
+  "description": "店舗の駐車しやすさを判定します",
+  "permissions": ["activeTab"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icon48.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.google.com/maps/*", "https://maps.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icon48.png"
+  }
+}
