@@ -33,24 +33,18 @@ VERDICT_LABELS = {
 async def _quick_parking_check(
     place: PlaceInfo, user_lat: float, user_lng: float
 ) -> ParkingSummary:
-    """Lightweight parking check using Places parking options + nearby count."""
-    # Check if the place itself has parking info from Google
-    has_parking = _has_places_parking(place)
+    """Lightweight parking check using Places parking options + nearby count.
 
-    if has_parking is True:
-        return ParkingSummary(
-            verdict=Verdict.ONSITE,
-            confidence=0.6,
-            vehicle_fit=VehicleFit.UNKNOWN,
-            label=VERDICT_LABELS[Verdict.ONSITE],
-        )
+    Google Places parking flag alone is NOT enough to confirm onsite parking.
+    It's treated as a weak hint, combined with nearby parking availability.
+    """
+    has_parking = _has_places_parking(place)
 
     # Search nearby parking around the place
     nearby = []
     if place.lat and place.lng and settings.google_maps_api_key:
         try:
             nearby = await search_nearby_parking(place.lat, place.lng, radius_m=300)
-            # Calculate distances
             for p in nearby:
                 if p.lat and p.lng:
                     p.distance_m = int(haversine_distance(place.lat, place.lng, p.lat, p.lng))
@@ -60,6 +54,29 @@ async def _quick_parking_check(
     nearby_count = len(nearby)
     nearest_dist = min((p.distance_m for p in nearby if p.distance_m > 0), default=None)
 
+    # Google Places says parking + nearby available
+    if has_parking is True and nearby_count >= 2:
+        return ParkingSummary(
+            verdict=Verdict.NEARBY_ONLY,
+            confidence=0.4,
+            vehicle_fit=VehicleFit.UNKNOWN,
+            label=f"P情報あり・近隣P {nearby_count}件",
+            nearby_parking_count=nearby_count,
+            nearest_parking_distance_m=nearest_dist,
+        )
+
+    # Google Places says parking but no nearby context
+    if has_parking is True:
+        return ParkingSummary(
+            verdict=Verdict.UNKNOWN,
+            confidence=0.3,
+            vehicle_fit=VehicleFit.UNKNOWN,
+            label="P情報あり(未確認)",
+            nearby_parking_count=nearby_count,
+            nearest_parking_distance_m=nearest_dist,
+        )
+
+    # No parking + no nearby
     if has_parking is False and nearby_count == 0:
         return ParkingSummary(
             verdict=Verdict.AVOID,
