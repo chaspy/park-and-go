@@ -64,23 +64,39 @@ CAPACITY_PATTERN = re.compile(
     r"(?:駐車場|parking)\s*[:：]?\s*(\d+)\s*台", re.IGNORECASE
 )
 
+# Height/width limits: require 車高/車幅 prefix to avoid matching unrelated dimensions
 HEIGHT_LIMIT_PATTERN = re.compile(
-    r"(?:車高|高さ)\s*(?:制限|リミット)?\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:m|cm|mm|メートル|センチ)",
+    r"車高\s*(?:制限|リミット)?\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:m|cm|mm|メートル|センチ)",
     re.IGNORECASE,
 )
 
 WIDTH_LIMIT_PATTERN = re.compile(
-    r"(?:車幅|幅)\s*(?:制限)?\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:m|cm|mm|メートル|センチ)",
+    r"車幅\s*(?:制限)?\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:m|cm|mm|メートル|センチ)",
+    re.IGNORECASE,
+)
+
+# Contextual height/width: 高さ/幅 only if near parking-related words
+PARKING_CONTEXT_PATTERN = re.compile(
+    r"(?:駐車|パーキング|parking|立体|機械式|地下)", re.IGNORECASE
+)
+
+CONTEXTUAL_HEIGHT_PATTERN = re.compile(
+    r"(?:高さ)\s*(?:制限|リミット)?\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:m|メートル)",
+    re.IGNORECASE,
+)
+
+CONTEXTUAL_WIDTH_PATTERN = re.compile(
+    r"(?:幅)\s*(?:制限)?\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:m|メートル)",
     re.IGNORECASE,
 )
 
 TIGHT_KEYWORDS = [
-    r"狭い",
+    r"(?:駐車場|駐車スペース).*狭い",
     r"1台のみ",
     r"1台分",
     r"軽自動車.*(?:推奨|限定|のみ)",
     r"小型車.*(?:推奨|限定|のみ)",
-    r"切り返し",
+    r"(?:駐車|車).*切り返し",
     r"(?:compact|small)\s+(?:cars?\s+)?only",
 ]
 
@@ -109,11 +125,19 @@ def _extract_text(html: str) -> str:
     return soup.get_text(separator="\n", strip=True)
 
 
-def _get_context(text: str, match_start: int, match_end: int, window: int = 80) -> str:
+def _get_context(text: str, match_start: int, match_end: int, window: int = 60) -> str:
     """Get surrounding context for a match."""
     start = max(0, match_start - window)
     end = min(len(text), match_end + window)
     return text[start:end].replace("\n", " ").strip()
+
+
+def _has_parking_context(text: str, match_start: int, match_end: int, window: int = 150) -> bool:
+    """Check if a match is near parking-related words."""
+    start = max(0, match_start - window)
+    end = min(len(text), match_end + window)
+    surrounding = text[start:end]
+    return bool(PARKING_CONTEXT_PATTERN.search(surrounding))
 
 
 def _find_mentions(text: str) -> list[ParkingMention]:
@@ -152,6 +176,7 @@ def _find_mentions(text: str) -> list[ParkingMention]:
             value=m.group(1),
         ))
 
+    # Strict vehicle height/width (車高/車幅) - always match
     for m in HEIGHT_LIMIT_PATTERN.finditer(text):
         mentions.append(ParkingMention(
             text=m.group(),
@@ -168,6 +193,25 @@ def _find_mentions(text: str) -> list[ParkingMention]:
             value=m.group(1),
         ))
 
+    # Contextual height/width (高さ/幅) - only near parking words, and only in meters
+    for m in CONTEXTUAL_HEIGHT_PATTERN.finditer(text):
+        if _has_parking_context(text, m.start(), m.end()):
+            mentions.append(ParkingMention(
+                text=m.group(),
+                context=_get_context(text, m.start(), m.end()),
+                kind="height_limit",
+                value=m.group(1),
+            ))
+
+    for m in CONTEXTUAL_WIDTH_PATTERN.finditer(text):
+        if _has_parking_context(text, m.start(), m.end()):
+            mentions.append(ParkingMention(
+                text=m.group(),
+                context=_get_context(text, m.start(), m.end()),
+                kind="width_limit",
+                value=m.group(1),
+            ))
+
     for pattern in TIGHT_KEYWORDS:
         for m in re.finditer(pattern, text, re.IGNORECASE):
             mentions.append(ParkingMention(
@@ -177,6 +221,18 @@ def _find_mentions(text: str) -> list[ParkingMention]:
             ))
 
     return mentions
+
+
+def _deduplicate_mentions(mentions: list[ParkingMention]) -> list[ParkingMention]:
+    """Remove duplicate mentions based on kind + text."""
+    seen: set[tuple[str, str]] = set()
+    result: list[ParkingMention] = []
+    for m in mentions:
+        key = (m.kind, m.text)
+        if key not in seen:
+            seen.add(key)
+            result.append(m)
+    return result
 
 
 def _candidate_urls(base_url: str) -> list[str]:
@@ -233,5 +289,8 @@ async def scrape_site(website_url: str) -> SiteScrapingResult:
             text = _extract_text(body)
             mentions = _find_mentions(text)
             result.mentions.extend(mentions)
+
+    # Deduplicate across all pages
+    result.mentions = _deduplicate_mentions(result.mentions)
 
     return result
