@@ -75,18 +75,20 @@ function App() {
     setLastKeyword("");
   }, []);
 
-  const handleSearch = useCallback(
-    async (keyword: string) => {
-      if (!location) return;
+  const [searchCenter, setSearchCenter] = useState<Location | null>(null);
+
+  const doSearch = useCallback(
+    async (keyword: string, center: Location, radiusM: number = 2000) => {
       setLoading(true);
       setError(null);
       setLastKeyword(keyword);
+      setSearchCenter(center);
       try {
         const res = await search({
           keyword,
-          lat: location.lat,
-          lng: location.lng,
-          radius_m: 2000,
+          lat: center.lat,
+          lng: center.lng,
+          radius_m: radiusM,
         });
         setResults(res.results);
         setParkingPins(res.nearby_parking_pins || []);
@@ -96,7 +98,23 @@ function App() {
         setLoading(false);
       }
     },
-    [location]
+    []
+  );
+
+  const handleSearch = useCallback(
+    async (keyword: string) => {
+      if (!location) return;
+      await doSearch(keyword, location);
+    },
+    [location, doSearch]
+  );
+
+  const handleSearchArea = useCallback(
+    async (center: Location, radiusM: number) => {
+      if (!lastKeyword) return;
+      await doSearch(lastKeyword, center, radiusM);
+    },
+    [lastKeyword, doSearch]
   );
 
   const handleSelectPlace = useCallback(async (item: SearchResultItem) => {
@@ -179,7 +197,14 @@ function App() {
           </div>
 
           {resultMode === "map" && (
-            <MapView center={location} items={results} parkingPins={parkingPins} onSelect={handleSelectPlace} />
+            <MapView
+              center={searchCenter || location}
+              items={results}
+              parkingPins={parkingPins}
+              onSelect={handleSelectPlace}
+              onSearchArea={handleSearchArea}
+              searching={loading}
+            />
           )}
 
           {resultMode === "list" && (

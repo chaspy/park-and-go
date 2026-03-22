@@ -133,6 +133,30 @@
 }
 .map-pin, .map-pin-current, .map-pin-parking { background: none !important; border: none !important; }
 
+/* Map wrapper for overlay button */
+.map-wrapper {
+  position: relative;
+}
+.search-area-btn {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  padding: 8px 20px;
+  background: white;
+  color: #4a90d9;
+  border: 1px solid #d1d5db;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  white-space: nowrap;
+}
+.search-area-btn:hover { background: #f0f4ff; }
+.search-area-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
 /* Search Bar */
 .search-section {
   margin: 8px 0;

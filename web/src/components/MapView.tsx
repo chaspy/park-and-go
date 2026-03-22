@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { SearchResultItem, NearbyParkingPin, Location } from "../types";
@@ -8,6 +8,8 @@ interface Props {
   items: SearchResultItem[];
   parkingPins: NearbyParkingPin[];
   onSelect: (item: SearchResultItem) => void;
+  onSearchArea?: (center: Location, radiusM: number) => void;
+  searching?: boolean;
 }
 
 const VERDICT_COLORS: Record<string, string> = {
@@ -68,16 +70,24 @@ const currentLocationIcon = L.divIcon({
   iconAnchor: [8, 8],
 });
 
-export function MapView({ center, items, parkingPins, onSelect }: Props) {
+function getVisibleRadiusM(map: L.Map): number {
+  const bounds = map.getBounds();
+  const center = bounds.getCenter();
+  const ne = bounds.getNorthEast();
+  return Math.round(center.distanceTo(ne));
+}
+
+export function MapView({ center, items, parkingPins, onSelect, onSearchArea, searching }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<L.Map | null>(null);
+  const markersLayer = useRef<L.LayerGroup | null>(null);
+  const initialCenter = useRef(center);
+  const [showSearchButton, setShowSearchButton] = useState(false);
 
+  // Initialize map once
   useEffect(() => {
     if (!mapRef.current) return;
-
-    if (leafletMap.current) {
-      leafletMap.current.remove();
-    }
+    if (leafletMap.current) return; // already initialized
 
     const map = L.map(mapRef.current, {
       zoomControl: false,
@@ -90,27 +100,56 @@ export function MapView({ center, items, parkingPins, onSelect }: Props) {
       maxZoom: 19,
     }).addTo(map);
 
-    // Current location
+    // Current location (stays permanently)
     L.marker([center.lat, center.lng], { icon: currentLocationIcon })
       .addTo(map)
       .bindPopup("現在地");
 
+    const layer = L.layerGroup().addTo(map);
+    markersLayer.current = layer;
+
+    // Show "search this area" button when map moves
+    map.on("moveend", () => {
+      const mapCenter = map.getCenter();
+      const dist = mapCenter.distanceTo(L.latLng(initialCenter.current.lat, initialCenter.current.lng));
+      // Show button if moved more than 200m from last search center
+      setShowSearchButton(dist > 200);
+    });
+
+    leafletMap.current = map;
+
+    return () => {
+      map.remove();
+      leafletMap.current = null;
+      markersLayer.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Update markers when items/parkingPins change
+  useEffect(() => {
+    const layer = markersLayer.current;
+    const map = leafletMap.current;
+    if (!layer || !map) return;
+
+    layer.clearLayers();
+
     const bounds = L.latLngBounds([[center.lat, center.lng]]);
 
-    // Nearby parking pins (P markers)
+    // Parking pins
     parkingPins.forEach((p) => {
       L.marker([p.lat, p.lng], { icon: parkingIcon })
-        .addTo(map)
         .bindPopup(`
           <div style="font-size:12px">
             <strong>${p.name}</strong><br>
             ${p.distance_m}m
           </div>
-        `);
+        `)
+        .addTo(layer);
       bounds.extend([p.lat, p.lng]);
     });
 
-    // Store result markers
+    // Store markers
     items.forEach((item) => {
       if (!item.lat || !item.lng) return;
 
@@ -118,7 +157,6 @@ export function MapView({ center, items, parkingPins, onSelect }: Props) {
       const icon = createStoreIcon(color);
 
       const marker = L.marker([item.lat, item.lng], { icon })
-        .addTo(map)
         .bindPopup(`
           <div style="font-size:13px;min-width:140px">
             <strong>${item.name}</strong><br>
@@ -126,7 +164,8 @@ export function MapView({ center, items, parkingPins, onSelect }: Props) {
             ${item.distance_m != null ? `${item.distance_m}m` : ""}
             ${item.rating ? ` ★${item.rating}` : ""}
           </div>
-        `);
+        `)
+        .addTo(layer);
 
       marker.on("click", () => marker.openPopup());
       marker.on("popupopen", () => {
@@ -144,13 +183,32 @@ export function MapView({ center, items, parkingPins, onSelect }: Props) {
       map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
     }
 
-    leafletMap.current = map;
-
-    return () => {
-      map.remove();
-      leafletMap.current = null;
-    };
+    // Update the reference center for distance check
+    initialCenter.current = center;
+    setShowSearchButton(false);
   }, [center, items, parkingPins, onSelect]);
 
-  return <div ref={mapRef} className="map-container" />;
+  const handleSearchArea = useCallback(() => {
+    const map = leafletMap.current;
+    if (!map || !onSearchArea) return;
+    const mapCenter = map.getCenter();
+    const radius = Math.min(getVisibleRadiusM(map), 5000);
+    onSearchArea({ lat: mapCenter.lat, lng: mapCenter.lng }, radius);
+    setShowSearchButton(false);
+  }, [onSearchArea]);
+
+  return (
+    <div className="map-wrapper">
+      <div ref={mapRef} className="map-container" />
+      {showSearchButton && onSearchArea && (
+        <button
+          className="search-area-btn"
+          onClick={handleSearchArea}
+          disabled={searching}
+        >
+          {searching ? "検索中..." : "この範囲で検索"}
+        </button>
+      )}
+    </div>
+  );
 }
