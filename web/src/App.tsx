@@ -3,14 +3,17 @@ import { search, analyze, geocode, reverseGeocode } from "./api";
 import type { SearchResultItem, AnalyzeResponse, Location } from "./types";
 import { SearchBar } from "./components/SearchBar";
 import { PlaceList } from "./components/PlaceList";
+import { MapView } from "./components/MapView";
 import { DetailView } from "./components/DetailView";
 import { LocationInput } from "./components/LocationInput";
 import "./App.css";
 
 type View = "search" | "detail";
+type ResultMode = "map" | "list";
 
 function App() {
   const [view, setView] = useState<View>("search");
+  const [resultMode, setResultMode] = useState<ResultMode>("map");
   const [location, setLocation] = useState<Location | null>(null);
   const [locationName, setLocationName] = useState<string | null>(null);
   const [locationLoading, setLocationLoading] = useState(true);
@@ -34,7 +37,6 @@ function App() {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setLocation(loc);
         setLocationLoading(false);
-        // Resolve to place name in background
         try {
           const name = await reverseGeocode(loc.lat, loc.lng);
           setLocationName(name);
@@ -50,7 +52,6 @@ function App() {
     );
   }, []);
 
-  // Manual location by place name
   const handleSetLocation = useCallback(async (query: string) => {
     setLocationLoading(true);
     try {
@@ -158,8 +159,31 @@ function App() {
 
       {loading && <div className="loading">検索中...</div>}
 
-      {!loading && results.length > 0 && (
-        <PlaceList items={results} keyword={lastKeyword} onSelect={handleSelectPlace} />
+      {!loading && results.length > 0 && location && (
+        <>
+          <div className="mode-toggle">
+            <button
+              className={`mode-btn ${resultMode === "map" ? "active" : ""}`}
+              onClick={() => setResultMode("map")}
+            >
+              マップ
+            </button>
+            <button
+              className={`mode-btn ${resultMode === "list" ? "active" : ""}`}
+              onClick={() => setResultMode("list")}
+            >
+              リスト
+            </button>
+          </div>
+
+          {resultMode === "map" && (
+            <MapView center={location} items={results} onSelect={handleSelectPlace} />
+          )}
+
+          {resultMode === "list" && (
+            <PlaceList items={results} keyword={lastKeyword} onSelect={handleSelectPlace} />
+          )}
+        </>
       )}
 
       {!loading && lastKeyword && results.length === 0 && !error && (
